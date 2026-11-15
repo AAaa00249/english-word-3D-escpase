@@ -1,0 +1,1623 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>실생활 영단어 3D 미로 탈출 어드벤처</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js (r128) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Google Fonts: Inter & Jua -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Jua&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', 'Jua', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      overflow-x: hidden;
+      background-color: #0f172a;
+    }
+    .font-display {
+      font-family: 'Jua', 'Inter', sans-serif;
+    }
+    canvas {
+      touch-action: none;
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.92); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-8px); }
+      40%, 80% { transform: translateX(8px); }
+    }
+    .animate-pop {
+      animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .animate-shake {
+      animation: shake 0.35s ease-in-out;
+    }
+    .btn-3d {
+      transition: all 0.12s ease;
+      box-shadow: 0 4px 0 rgba(0, 0, 0, 0.22);
+    }
+    .btn-3d:active {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col text-slate-800 bg-slate-950">
+
+  <!-- 상단 내비게이션 헤더 -->
+  <header class="bg-slate-900 border-b border-slate-800 shadow-md sticky top-0 z-30 text-white">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2">
+      <!-- 로고 및 타이틀 -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-emerald-500 flex items-center justify-center text-white font-extrabold text-lg shadow">
+          ABC
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-extrabold text-white leading-tight font-display">실생활 영단어 3D 미로 탈출</h1>
+          <p class="text-xs text-slate-400 hidden sm:block">필수 영단어 500선에서 매번 새롭게 출제되는 1인칭 3D 미궁 어드벤처!</p>
+        </div>
+      </div>
+
+      <!-- 스테이지 선택 및 사운드/새 단어 세트 컨트롤 -->
+      <div class="flex items-center gap-2">
+        <select id="stage-select" onchange="selectStageLevel(Number(this.value))" class="bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm font-bold rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <!-- JS로 1~10단계 동적 생성 -->
+        </select>
+        <button onclick="reshuffleWordsAndRestart()" class="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow">
+          🎲 새 단어 배치
+        </button>
+        <button id="btn-sound-toggle" onclick="toggleSound()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white transition" title="효과음/발음 켜기/끄기">
+          🔊
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 메인 콘텐츠 영역: 1인칭 3D 미로 탈출 단독 풀스크린 뷰 -->
+  <main class="flex-1 flex flex-col max-w-7xl w-full mx-auto p-2 sm:p-4">
+
+    <!-- 글로벌 알림 토스트 배너 -->
+    <div id="toast-banner" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-slate-700 text-white px-5 py-3 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-2.5 animate-pop">
+      <span id="toast-icon">✨</span>
+      <span id="toast-text">알림 메시지</span>
+    </div>
+
+    <!-- =========================================================
+         [1인칭 3D 영단어 미로 탈출 게임]
+         ========================================================= -->
+    <section id="stage-maze" class="flex-1 flex flex-col bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-700 relative min-h-[560px] sm:min-h-[650px]">
+      
+      <!-- 3D Three.js 캔버스 컨테이너 -->
+      <div id="maze-3d-container" class="absolute inset-0 w-full h-full"></div>
+
+      <!-- 상단 HUD 오버레이 -->
+      <div class="relative z-10 p-3 sm:p-4 flex flex-wrap items-start justify-between gap-2 pointer-events-none">
+        <!-- 좌측: 미션 상태 및 열린 문 카운터 -->
+        <div class="bg-slate-900/85 backdrop-blur-md border border-slate-700/80 text-white px-4 py-2.5 rounded-2xl pointer-events-auto shadow-lg">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="hud-stage-title" class="text-xs font-extrabold text-indigo-300 uppercase tracking-wider">STAGE 1 / 10 · 실생활 영단어 미로</span>
+          </div>
+          <div class="mt-1 flex items-center gap-4 text-sm font-bold">
+            <div>🔓 연 문: <span id="hud-gates-opened" class="text-amber-400 font-extrabold">0</span> / <span id="hud-gates-total">5</span></div>
+            <div>⏱️ 시간: <span id="hud-timer" class="text-sky-300 font-mono">00:00</span></div>
+            <div class="hidden sm:block text-xs text-slate-400">📚 단어 풀: <span id="hud-pool-remaining" class="text-emerald-300 font-bold">500</span>개 남음</div>
+          </div>
+          <div id="hud-hint" class="mt-1 text-[11px] text-amber-200/90">
+            ⚠️ 주의: 단어 암호가 틀리면 출발 지점(START)으로 리스폰됩니다!
+          </div>
+        </div>
+
+        <!-- 우측: 미니맵 토글 및 미로 리셋 버튼 -->
+        <div class="flex items-start gap-2 pointer-events-auto">
+          <button id="btn-minimap-toggle" onclick="toggleMinimap()" class="bg-slate-900/85 hover:bg-slate-800 text-white border border-slate-700 px-3 py-2 rounded-xl text-xs font-bold shadow-lg backdrop-blur-md">
+            🗺️ 미니맵 보기
+          </button>
+          <button onclick="initMazeGame()" class="bg-slate-900/85 hover:bg-slate-800 text-amber-300 border border-slate-700 px-3 py-2 rounded-xl text-xs font-bold shadow-lg backdrop-blur-md">
+            🔄 미로 리셋
+          </button>
+          <!-- 미니맵 캔버스 박스 (기본 숨김 상태) -->
+          <div id="minimap-wrapper" class="hidden bg-slate-900/90 border-2 border-slate-600 rounded-2xl p-1.5 shadow-xl backdrop-blur-md">
+            <canvas id="minimap-canvas" width="135" height="135" class="rounded-xl block"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 중앙 조준점 (Crosshair) -->
+      <div class="pointer-events-none absolute inset-0 flex items-center justify-center z-10">
+        <div class="w-3 h-3 rounded-full border-2 border-white/60 bg-indigo-500/30"></div>
+      </div>
+
+      <!-- 문 앞 상호작용 프롬프트 배너 -->
+      <div id="gate-interact-banner" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 bg-amber-500/95 text-slate-950 px-5 py-3 rounded-2xl shadow-2xl font-extrabold text-sm sm:text-base flex items-center gap-3 border-2 border-white animate-bounce">
+        <span>🚪 잠긴 영단어 문 발견!</span>
+        <button onclick="openGatePuzzleModal()" class="bg-slate-900 text-white px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold hover:bg-slate-800">
+          단어 암호 풀기 (Space)
+        </button>
+      </div>
+
+      <!-- 하단 온스크린 방향/시점 컨트롤러 (왼쪽: 앞/뒤 이동, 오른쪽: 양옆 회전) -->
+      <div class="relative z-10 mt-auto p-3 sm:p-5 flex items-end justify-between pointer-events-none">
+        <!-- 왼쪽 하단: 앞(▲) / 뒤(▼) 이동 패드 -->
+        <div class="flex flex-col gap-2 pointer-events-auto bg-slate-900/75 backdrop-blur-md p-2.5 rounded-3xl border border-slate-700/70 shadow-xl">
+          <button id="ctrl-forward" class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/15 hover:bg-white/25 active:bg-indigo-500 text-white font-extrabold text-xl flex flex-col items-center justify-center shadow transition">
+            <span>▲</span>
+            <span class="text-[10px] font-bold text-slate-200 mt-0.5">앞으로</span>
+          </button>
+          <button id="ctrl-backward" class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/15 hover:bg-white/25 active:bg-indigo-500 text-white font-extrabold text-xl flex flex-col items-center justify-center shadow transition">
+            <span>▼</span>
+            <span class="text-[10px] font-bold text-slate-200 mt-0.5">뒤로</span>
+          </button>
+        </div>
+
+        <!-- 중앙 하단 키보드 조작 안내 -->
+        <div class="hidden md:block bg-slate-900/75 text-slate-300 text-[11px] px-3.5 py-1.5 rounded-xl border border-slate-700 pointer-events-auto mb-1">
+          키보드: <strong class="text-white">W/↑</strong> 전진 · <strong class="text-white">S/↓</strong> 후진 · <strong class="text-white">A/D/←/→</strong> 회전 · <strong class="text-white">Space</strong> 문 열기 · 마우스 드래그 시점 회전
+        </div>
+
+        <!-- 오른쪽 하단: 양옆(좌/우) 시점 회전 패드 -->
+        <div class="flex items-center gap-2 pointer-events-auto bg-slate-900/75 backdrop-blur-md p-2.5 rounded-3xl border border-slate-700/70 shadow-xl">
+          <button id="ctrl-left" class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/15 hover:bg-white/25 active:bg-indigo-500 text-white font-extrabold text-xl flex flex-col items-center justify-center shadow transition">
+            <span>↺</span>
+            <span class="text-[10px] font-bold text-slate-200 mt-0.5">왼쪽</span>
+          </button>
+          <button id="ctrl-right" class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/15 hover:bg-white/25 active:bg-indigo-500 text-white font-extrabold text-xl flex flex-col items-center justify-center shadow transition">
+            <span>↻</span>
+            <span class="text-[10px] font-bold text-slate-200 mt-0.5">오른쪽</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- =========================================================
+           [모달 1: 잠긴 영단어 문 해독 퀴즈 (6지선다 선택 / 스펠링 직접 입력)]
+           ========================================================= -->
+      <div id="gate-puzzle-modal" class="hidden absolute inset-0 z-30 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+        <div class="bg-white rounded-3xl max-w-xl w-full p-5 sm:p-7 shadow-2xl border-2 border-indigo-200 animate-pop">
+          <!-- 모달 헤더 -->
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🔐</span>
+              <div>
+                <h3 class="text-lg sm:text-xl font-extrabold text-slate-800 font-display">영단어 잠금장치 해제</h3>
+                <p class="text-xs text-slate-500">문의 단어 의미를 맞히거나 스펠링을 직접 입력해 문을 여세요!</p>
+              </div>
+            </div>
+            <button onclick="closeGatePuzzleModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold flex items-center justify-center">
+              ✕
+            </button>
+          </div>
+
+          <!-- 문제 단어 표시 및 원어민 발음 버튼 -->
+          <div class="bg-gradient-to-r from-indigo-50 to-emerald-50 border border-indigo-200 rounded-2xl p-4 flex items-center justify-between gap-3 mb-4">
+            <div class="flex items-center gap-3.5 min-w-0">
+              <div class="px-4 py-3 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-2xl sm:text-3xl font-extrabold shadow shrink-0">
+                <span id="modal-gate-prompt">apple</span>
+              </div>
+              <div class="min-w-0">
+                <div id="modal-gate-prompt-badge" class="text-xs font-bold text-indigo-500">잠긴 문의 실생활 영단어</div>
+                <div id="modal-gate-question-text" class="text-sm sm:text-base font-extrabold text-slate-800 leading-snug">
+                  이 단어의 알맞은 <span class="text-emerald-600 underline">우리말 뜻</span>은 무엇일까요?
+                </div>
+              </div>
+            </div>
+            <button onclick="speakGateWord()" class="btn-3d px-3.5 py-2.5 rounded-xl bg-white border border-indigo-200 text-indigo-700 font-bold text-xs flex flex-col items-center gap-0.5 shrink-0">
+              <span class="text-base">🔈</span>
+              <span>발음 듣기</span>
+            </button>
+          </div>
+
+          <!-- 풀이 방식 전환 탭 (6지선다 선택 vs 스펠링 직접 입력) -->
+          <div class="flex bg-slate-100 p-1 rounded-xl mb-4">
+            <button id="puzzle-mode-select" onclick="setGatePuzzleMode('select')" class="flex-1 py-2 rounded-lg text-xs font-extrabold bg-white text-indigo-700 shadow-sm transition">
+              🎯 6지선다 카드 고르기
+            </button>
+            <button id="puzzle-mode-type" onclick="setGatePuzzleMode('type')" class="flex-1 py-2 rounded-lg text-xs font-extrabold text-slate-600 hover:text-slate-900 transition">
+              ⌨️ 영단어 스펠링 직접 입력
+            </button>
+          </div>
+
+          <!-- 모드 A: 6지선다 선택 -->
+          <div id="gate-mode-select-panel">
+            <div id="gate-options-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-3">
+              <!-- JS로 보기 6개 동적 생성 -->
+            </div>
+          </div>
+
+          <!-- 모드 B: 영단어 스펠링 직접 타이핑 -->
+          <div id="gate-mode-type-panel" class="hidden flex flex-col items-center">
+            <div class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-3 text-center">
+              <div class="text-xs font-bold text-slate-500 mb-1">우리말 뜻 & 글자 수 힌트</div>
+              <div id="gate-type-meaning" class="text-xl font-extrabold text-emerald-700 mb-2">사과</div>
+              <div id="gate-type-hint" class="text-sm font-mono font-bold tracking-widest text-indigo-600 bg-indigo-50 inline-block px-3 py-1 rounded-lg">
+                a _ _ _ e (5글자)
+              </div>
+            </div>
+            <form onsubmit="event.preventDefault(); verifyGateTypedWord();" class="w-full flex flex-col sm:flex-row gap-2">
+              <input
+                id="gate-type-input"
+                type="text"
+                autocomplete="off"
+                autocapitalize="none"
+                spellcheck="false"
+                placeholder="영어 단어를 입력하세요..."
+                class="flex-1 px-4 py-3 rounded-xl border-2 border-indigo-300 focus:border-indigo-600 focus:outline-none text-center text-lg font-extrabold text-slate-800"
+              />
+              <button type="submit" class="btn-3d px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-sm">
+                🔓 확인 및 열기
+              </button>
+            </form>
+          </div>
+
+          <!-- 피드백 영역 -->
+          <div id="gate-modal-feedback" class="mt-3 text-center text-xs font-bold text-slate-500 min-h-[20px]">
+            정답을 맞히면 문이 열립니다! (오답 시 처음 출발 지점으로 이동)
+          </div>
+        </div>
+      </div>
+
+      <!-- =========================================================
+           [모달 2: 미로 탈출 성공 축하 화면]
+           ========================================================= -->
+      <div id="maze-victory-modal" class="hidden absolute inset-0 z-40 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 text-center shadow-2xl border-4 border-amber-300 animate-pop">
+          <div class="text-6xl mb-3">🏆🎉</div>
+          <h3 class="text-2xl sm:text-3xl font-extrabold text-slate-800 font-display mb-2">3D 영단어 미로 탈출 성공!</h3>
+          <p class="text-sm text-slate-600 mb-5">모든 잠긴 단어 문을 해독하고 무사히 탈출구로 빠져나왔습니다!</p>
+
+          <div class="bg-slate-50 rounded-2xl p-4 border border-slate-200 mb-5 grid grid-cols-2 gap-3">
+            <div>
+              <div class="text-xs font-bold text-slate-400">소요 시간</div>
+              <div id="victory-time" class="text-xl font-extrabold text-indigo-600 font-mono">00:45</div>
+            </div>
+            <div>
+              <div class="text-xs font-bold text-slate-400">해결한 영단어 문</div>
+              <div id="victory-gates" class="text-xl font-extrabold text-emerald-600">5 / 5개</div>
+            </div>
+          </div>
+
+          <div class="mb-6">
+            <div class="text-xs font-bold text-slate-400 mb-2">이번 스테이지에서 정복한 실생활 영단어</div>
+            <div id="victory-words-list" class="flex flex-wrap justify-center gap-1.5 max-h-32 overflow-y-auto p-1">
+              <!-- 클리어 단어 뱃지 동적 생성 -->
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-2.5">
+            <button id="btn-next-stage" onclick="proceedToNextStage()" class="flex-1 btn-3d py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-sm">
+              🚀 다음 단계 (2단계) 도전!
+            </button>
+            <button onclick="closeVictoryModalAndReplayMaze()" class="flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm">
+              🔄 새 단어로 현재 단계 재도전
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script>
+    /**
+     * ============================================================================
+     * [0단계] 실생활 필수 영단어 500선 데이터베이스 & 스테이지 설정
+     * ============================================================================
+     */
+    const RAW_500_WORDS = [
+      // 1~100: 일상 사물·음식·가정
+      ["apple", "사과"], ["water", "물"], ["bread", "빵"], ["milk", "우유"], ["coffee", "커피"],
+      ["tea", "차"], ["juice", "주스"], ["rice", "밥/쌀"], ["egg", "달걀"], ["meat", "고기"],
+      ["fish", "물고기/생선"], ["fruit", "과일"], ["sugar", "설탕"], ["salt", "소금"], ["butter", "버터"],
+      ["cheese", "치즈"], ["soup", "수프/국"], ["salad", "샐러드"], ["cake", "케이크"], ["cookie", "쿠키"],
+      ["banana", "바나나"], ["orange", "오렌지"], ["grape", "포도"], ["lemon", "레몬"], ["tomato", "토마토"],
+      ["potato", "감자"], ["onion", "양파"], ["carrot", "당근"], ["garlic", "마늘"], ["pepper", "후추/고추"],
+      ["table", "식탁/테이블"], ["chair", "의자"], ["bed", "침대"], ["desk", "책상"], ["sofa", "소파"],
+      ["door", "문"], ["window", "창문"], ["wall", "벽"], ["floor", "바닥"], ["roof", "지붕"],
+      ["room", "방"], ["kitchen", "부엌"], ["bathroom", "화장실/욕실"], ["garden", "정원"], ["yard", "마당"],
+      ["key", "열쇠"], ["lock", "자물쇠"], ["clock", "시계"], ["watch", "손목시계"], ["mirror", "거울"],
+      ["lamp", "전등/램프"], ["light", "빛/조명"], ["fan", "선풍기"], ["phone", "전화기"], ["screen", "화면"],
+      ["camera", "카메라"], ["radio", "라디오"], ["battery", "배터리"], ["cable", "케이블/전선"], ["plug", "플러그"],
+      ["cup", "컵"], ["glass", "유리잔"], ["plate", "접시"], ["bowl", "그릇"], ["spoon", "숟가락"],
+      ["fork", "포크"], ["knife", "칼"], ["bottle", "병"], ["box", "상자"], ["bag", "가방"],
+      ["wallet", "지갑"], ["pocket", "주머니"], ["umbrella", "우산"], ["towel", "수건"], ["soap", "비누"],
+      ["brush", "솔/빗"], ["comb", "빗"], ["pillow", "베개"], ["blanket", "담요"], ["curtain", "커튼"],
+      ["carpet", "카펫"], ["stairs", "계단"], ["elevator", "엘리베이터"], ["gate", "대문/출입구"], ["fence", "울타리"],
+      ["trash", "쓰레기"], ["basket", "바구니"], ["bucket", "양동이"], ["candle", "양초"], ["match", "성냥/시합"],
+      ["paper", "종이"], ["book", "책"], ["notebook", "공책"], ["pen", "펜"], ["pencil", "연필"],
+      ["eraser", "지우개"], ["ruler", "자"], ["scissors", "가위"], ["glue", "풀"], ["tape", "테이프"],
+
+      // 101~200: 의류·신체·건강·가족
+      ["shirt", "셔츠"], ["pants", "바지"], ["coat", "코트"], ["jacket", "재킷"], ["dress", "드레스/원피스"],
+      ["skirt", "치마"], ["shoes", "신발"], ["socks", "양말"], ["hat", "모자"], ["cap", "야구모자"],
+      ["gloves", "장갑"], ["scarf", "목도리"], ["belt", "허리띠"], ["glasses", "안경"], ["ring", "반지"],
+      ["head", "머리"], ["face", "얼굴"], ["hair", "머리카락"], ["eye", "눈"], ["ear", "귀"],
+      ["nose", "코"], ["mouth", "입"], ["tooth", "치아"], ["neck", "목"], ["shoulder", "어깨"],
+      ["arm", "팔"], ["hand", "손"], ["finger", "손가락"], ["chest", "가슴"], ["back", "등/뒤"],
+      ["stomach", "배/위"], ["leg", "다리"], ["knee", "무릎"], ["foot", "발"], ["heart", "심장/마음"],
+      ["blood", "피/혈액"], ["skin", "피부"], ["bone", "뼈"], ["voice", "목소리"], ["breath", "숨/호흡"],
+      ["health", "건강"], ["pain", "통증"], ["fever", "열"], ["cold", "감기/추운"], ["cough", "기침"],
+      ["medicine", "약"], ["doctor", "의사"], ["nurse", "간호사"], ["hospital", "병원"], ["patient", "환자"],
+      ["family", "가족"], ["parent", "부모"], ["father", "아버지"], ["mother", "어머니"], ["son", "아들"],
+      ["daughter", "딸"], ["brother", "형제"], ["sister", "자매"], ["baby", "아기"], ["child", "어린이"],
+      ["husband", "남편"], ["wife", "아내"], ["uncle", "삼촌"], ["aunt", "이모/고모"], ["cousin", "사촌"],
+      ["friend", "친구"], ["neighbor", "이웃"], ["guest", "손님"], ["host", "주인"], ["stranger", "낯선 사람"],
+      ["person", "사람"], ["people", "사람들"], ["man", "남자"], ["woman", "여자"], ["adult", "어른"],
+      ["name", "이름"], ["age", "나이"], ["birthday", "생일"], ["wedding", "결혼식"], ["party", "파티"],
+      ["gift", "선물"], ["card", "카드"], ["letter", "편지"], ["photo", "사진"], ["album", "앨범"],
+      ["story", "이야기"], ["news", "뉴스/소식"], ["secret", "비밀"], ["promise", "약속"], ["habit", "습관"],
+      ["dream", "꿈"], ["memory", "기억"], ["idea", "아이디어/생각"], ["reason", "이유"], ["problem", "문제"],
+      ["answer", "정답/대답"], ["question", "질문"], ["mistake", "실수"], ["chance", "기회"], ["choice", "선택"],
+
+      // 201~300: 장소·교통·여행·도시
+      ["home", "집/가정"], ["house", "주택"], ["building", "건물"], ["office", "사무실"], ["company", "회사"],
+      ["school", "학교"], ["class", "수업/학급"], ["library", "도서관"], ["museum", "박물관"], ["theater", "극장"],
+      ["bank", "은행"], ["market", "시장"], ["store", "가게"], ["shop", "상점"], ["mall", "쇼핑몰"],
+      ["hotel", "호텔"], ["station", "역/정거장"], ["airport", "공항"], ["port", "항구"], ["bridge", "다리"],
+      ["road", "도로"], ["street", "거리"], ["corner", "모퉁이"], ["square", "광장/정사각형"], ["park", "공원"],
+      ["city", "도시"], ["town", "마을/읍"], ["village", "시골 마을"], ["country", "나라/시골"], ["world", "세계"],
+      ["map", "지도"], ["north", "북쪽"], ["south", "남쪽"], ["east", "동쪽"], ["west", "서쪽"],
+      ["left", "왼쪽"], ["right", "오른쪽"], ["front", "앞쪽"], ["center", "중앙"], ["side", "옆면"],
+      ["car", "자동차"], ["bus", "버스"], ["train", "기차"], ["subway", "지하철"], ["taxi", "택시"],
+      ["bicycle", "자전거"], ["airplane", "비행기"], ["ship", "배/선박"], ["boat", "보트"], ["truck", "트럭"],
+      ["wheel", "바퀴"], ["engine", "엔진"], ["seat", "좌석"], ["ticket", "표/티켓"], ["passport", "여권"],
+      ["trip", "여행"], ["travel", "여행하다"], ["tour", "관광"], ["vacation", "휴가"], ["holiday", "공휴일"],
+      ["beach", "해변"], ["island", "섬"], ["mountain", "산"], ["hill", "언덕"], ["valley", "계곡"],
+      ["forest", "숲"], ["tree", "나무"], ["flower", "꽃"], ["grass", "잔디/풀"], ["leaf", "나뭇잎"],
+      ["river", "강"], ["lake", "호수"], ["sea", "바다"], ["ocean", "대양"], ["wave", "파도"],
+      ["rock", "바위"], ["stone", "돌"], ["sand", "모래"], ["soil", "흙"], ["field", "들판/분야"],
+      ["farm", "농장"], ["animal", "동물"], ["dog", "개"], ["cat", "고양이"], ["bird", "새"],
+      ["horse", "말"], ["cow", "소"], ["pig", "돼지"], ["sheep", "양"], ["rabbit", "토끼"],
+      ["bear", "곰"], ["lion", "사자"], ["tiger", "호랑이"], ["monkey", "원숭이"], ["snake", "뱀"],
+      ["insect", "곤충"], ["bee", "벌"], ["butterfly", "나비"], ["spider", "거미"], ["tail", "꼬리"],
+
+      // 301~400: 시간·날씨·자연·숫자·경제
+      ["time", "시간"], ["day", "날/낮"], ["night", "밤"], ["morning", "아침"], ["afternoon", "오후"],
+      ["evening", "저녁"], ["today", "오늘"], ["tomorrow", "내일"], ["yesterday", "어제"], ["week", "주"],
+      ["weekend", "주말"], ["month", "달/개월"], ["year", "년/해"], ["season", "계절"], ["spring", "봄"],
+      ["summer", "여름"], ["autumn", "가을"], ["winter", "겨울"], ["hour", "시간(1시간)"], ["minute", "분"],
+      ["second", "초/두 번째"], ["moment", "순간"], ["future", "미래"], ["past", "과거"], ["present", "현재/선물"],
+      ["weather", "날씨"], ["sun", "태양/해"], ["moon", "달"], ["star", "별"], ["sky", "하늘"],
+      ["cloud", "구름"], ["rain", "비"], ["snow", "눈"], ["wind", "바람"], ["storm", "폭풍"],
+      ["ice", "얼음"], ["fire", "불"], ["smoke", "연기"], ["air", "공기"], ["earth", "지구/땅"],
+      ["money", "돈"], ["coin", "동전"], ["bill", "지폐/계산서"], ["price", "가격"], ["cost", "비용"],
+      ["sale", "할인/판매"], ["tax", "세금"], ["account", "계좌/계정"], ["budget", "예산"], ["profit", "이익"],
+      ["job", "직업/일"], ["work", "일/작업"], ["worker", "근로자"], ["boss", "상사"], ["manager", "관리자"],
+      ["team", "팀"], ["member", "구성원"], ["leader", "지도자"], ["student", "학생"], ["teacher", "선생님"],
+      ["lesson", "수업/교훈"], ["exam", "시험"], ["score", "점수"], ["grade", "성적/학년"], ["prize", "상/상품"],
+      ["language", "언어"], ["word", "단어"], ["sentence", "문장"], ["meaning", "의미"], ["sound", "소리"],
+      ["music", "음악"], ["song", "노래"], ["movie", "영화"], ["game", "게임/경기"], ["sport", "스포츠"],
+      ["ball", "공"], ["goal", "목표/골"], ["race", "경주"], ["winner", "우승자"], ["record", "기록"],
+      ["art", "예술"], ["picture", "그림/사진"], ["color", "색깔"], ["red", "빨간색"], ["blue", "파란색"],
+      ["green", "초록색"], ["yellow", "노란색"], ["black", "검은색"], ["white", "흰색"], ["gray", "회색"],
+      ["size", "크기"], ["shape", "모양"], ["circle", "원"], ["line", "선/줄"], ["point", "점/요점"],
+      ["number", "숫자"], ["half", "절반"], ["pair", "한 쌍"], ["group", "무리/그룹"], ["list", "목록"],
+
+      // 401~500: 실생활 필수 동사·형용사·부사
+      ["go", "가다"], ["come", "오다"], ["walk", "걷다"], ["run", "달리다"], ["jump", "뛰다"],
+      ["stop", "멈추다"], ["wait", "기다리다"], ["stay", "머무르다"], ["leave", "떠나다"], ["arrive", "도착하다"],
+      ["enter", "들어가다"], ["exit", "나가다/출구"], ["open", "열다"], ["close", "닫다"], ["push", "밀다"],
+      ["pull", "당기다"], ["turn", "돌다/차례"], ["move", "움직이다"], ["carry", "나르다"], ["hold", "잡다"],
+      ["eat", "먹다"], ["drink", "마시다"], ["cook", "요리하다"], ["wash", "씻다"], ["clean", "청소하다"],
+      ["sleep", "자다"], ["wake", "깨다"], ["rest", "쉬다"], ["sit", "앉다"], ["stand", "서다"],
+      ["see", "보다"], ["look", "바라보다"], ["hear", "듣다"], ["listen", "귀 기울여 듣다"], ["speak", "말하다"],
+      ["talk", "대화하다"], ["say", "말하다"], ["ask", "묻다"], ["tell", "말해주다"], ["call", "부르다/전화하다"],
+      ["read", "읽다"], ["write", "쓰다"], ["draw", "그리다"], ["learn", "배우다"], ["study", "공부하다"],
+      ["teach", "가르치다"], ["think", "생각하다"], ["know", "알다"], ["understand", "이해하다"], ["remember", "기억하다"],
+      ["forget", "잊다"], ["find", "찾다"], ["lose", "잃어버리다"], ["keep", "유지하다/보관하다"], ["give", "주다"],
+      ["take", "가져가다"], ["buy", "사다"], ["sell", "팔다"], ["pay", "지불하다"], ["spend", "쓰다/소비하다"],
+      ["save", "저장하다/구하다"], ["help", "돕다"], ["make", "만들다"], ["build", "짓다"], ["fix", "고치다"],
+      ["break", "깨뜨리다"], ["use", "사용하다"], ["try", "시도하다"], ["start", "시작하다"], ["finish", "끝내다"],
+      ["win", "이기다"], ["play", "놀다/연주하다"], ["sing", "노래하다"], ["dance", "춤추다"], ["smile", "미소 짓다"],
+      ["laugh", "웃다"], ["cry", "울다"], ["love", "사랑하다"], ["like", "좋아하다"], ["hope", "희망하다"],
+      ["good", "좋은"], ["bad", "나쁜"], ["big", "큰"], ["small", "작은"], ["long", "긴"],
+      ["short", "짧은"], ["high", "높은"], ["low", "낮은"], ["fast", "빠른"], ["slow", "느린"],
+      ["hot", "뜨거운/더운"], ["warm", "따뜻한"], ["cool", "시원한"], ["new", "새로운"], ["old", "오래된/늙은"],
+      ["easy", "쉬운"], ["hard", "어려운/단단한"], ["happy", "행복한"], ["safe", "안전한"], ["ready", "준비된"]
+    ];
+
+    // 중복 없는 500개 단어 객체 배열 구성
+    const WORD_BANK_500 = (() => {
+      const seen = new Set();
+      const list = [];
+      for (const [en, ko] of RAW_500_WORDS) {
+        const cleanEn = en.trim().toLowerCase();
+        if (!seen.has(cleanEn)) {
+          seen.add(cleanEn);
+          list.push({ en: cleanEn, ko: ko.trim() });
+        }
+      }
+      return list;
+    })();
+
+    // 총 10단계 미로 & 문제 수 설정 (1~5단계: 5~9문제, 6~10단계: 10문제 고정)
+    const STAGE_CONFIGS = [
+      { stage: 1,  mazeSize: 9,  questionCount: 5,  label: '1단계 (입문 9×9 · 5단어)' },
+      { stage: 2,  mazeSize: 11, questionCount: 6,  label: '2단계 (초급 11×11 · 6단어)' },
+      { stage: 3,  mazeSize: 13, questionCount: 7,  label: '3단계 (기초 13×13 · 7단어)' },
+      { stage: 4,  mazeSize: 15, questionCount: 8,  label: '4단계 (발전 15×15 · 8단어)' },
+      { stage: 5,  mazeSize: 17, questionCount: 9,  label: '5단계 (중급 17×17 · 9단어)' },
+      { stage: 6,  mazeSize: 19, questionCount: 10, label: '6단계 (심화 19×19 · 10단어)' },
+      { stage: 7,  mazeSize: 21, questionCount: 10, label: '7단계 (숙련 21×21 · 10단어)' },
+      { stage: 8,  mazeSize: 21, questionCount: 10, label: '8단계 (도전 21×21 · 10단어)' },
+      { stage: 9,  mazeSize: 23, questionCount: 10, label: '9단계 (고수 23×23 · 10단어)' },
+      { stage: 10, mazeSize: 25, questionCount: 10, label: '10단계 (마스터 25×25 · 10단어)' }
+    ];
+
+    const appState = {
+      stageLevel: 1,                  // 1 ~ 10
+      clearedStages: new Set(),
+      soundEnabled: true,
+
+      // 500개 영단어 무작위 비복원(중복 방지) 추출 덱
+      wordDeck: [],
+      mazeWords: [],
+
+      // 3D 미로 게임 상태
+      mazeInitialized: false,
+      mazeCleared: false,
+      mazeElapsedSec: 0,
+      mazeTimerInterval: null,
+      respawnCount: 0,
+      showMinimap: false,
+      activeGate: null,
+      gatePuzzleMode: 'select'
+    };
+
+    const STORAGE_KEY = 'word_3d_maze_progress_v1';
+
+    function loadProgressFromStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.clearedStages)) {
+          appState.clearedStages = new Set(parsed.clearedStages);
+        }
+        if (typeof parsed.soundEnabled === 'boolean') {
+          appState.soundEnabled = parsed.soundEnabled;
+          updateSoundButtonUI();
+        }
+      } catch (e) {
+        console.warn('진행도 불러오기 건너뜀:', e);
+      }
+    }
+
+    function saveProgressToStorage() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          clearedStages: Array.from(appState.clearedStages),
+          soundEnabled: appState.soundEnabled
+        }));
+      } catch (e) {
+        console.warn('진행도 저장 건너뜀:', e);
+      }
+    }
+
+    // 암호학적으로 균등한 피셔-예이츠(Fisher-Yates) 셔플
+    function shuffleArray(arr) {
+      const copy = [...arr];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    // 500개 단어 덱에서 중복 없이 count개 무작위 추출 (소진 시 전체 재셔플)
+    function drawUniqueWordsFrom500(count) {
+      const picked = [];
+      const pickedSet = new Set();
+
+      while (picked.length < count) {
+        if (appState.wordDeck.length === 0) {
+          appState.wordDeck = shuffleArray(WORD_BANK_500);
+        }
+        const candidate = appState.wordDeck.pop();
+        if (!pickedSet.has(candidate.en)) {
+          pickedSet.add(candidate.en);
+          picked.push(candidate);
+        }
+      }
+
+      const poolEl = document.getElementById('hud-pool-remaining');
+      if (poolEl) poolEl.textContent = appState.wordDeck.length;
+
+      return picked;
+    }
+
+    function renderStageDropdowns() {
+      const desktopSel = document.getElementById('stage-select');
+      if (!desktopSel) return;
+      desktopSel.innerHTML = '';
+      STAGE_CONFIGS.forEach(cfg => {
+        const opt = document.createElement('option');
+        opt.value = cfg.stage;
+        const isCleared = appState.clearedStages.has(cfg.stage);
+        opt.textContent = `${isCleared ? '✅ ' : ''}${cfg.label}`;
+        if (cfg.stage === appState.stageLevel) opt.selected = true;
+        desktopSel.appendChild(opt);
+      });
+    }
+
+    function selectStageLevel(stageNum) {
+      const validStage = Math.min(10, Math.max(1, Number(stageNum) || 1));
+      appState.stageLevel = validStage;
+      const cfg = STAGE_CONFIGS[validStage - 1];
+      appState.mazeWords = drawUniqueWordsFrom500(cfg.questionCount);
+
+      renderStageDropdowns();
+      initMazeGame();
+      showToast(`STAGE ${validStage} (${cfg.mazeSize}×${cfg.mazeSize}, 새 영단어 ${cfg.questionCount}문제) 시작!`, '🏰');
+    }
+
+    function reshuffleWordsAndRestart() {
+      const cfg = STAGE_CONFIGS[appState.stageLevel - 1];
+      appState.mazeWords = drawUniqueWordsFrom500(cfg.questionCount);
+      initMazeGame();
+      showToast(`500개 단어 풀에서 새로운 ${cfg.questionCount}개 영단어가 무작위 배치되었습니다!`, '🎲');
+    }
+
+    // Web Audio API 효과음 합성기
+    let audioCtx = null;
+    function playSoundEffect(type) {
+      if (!appState.soundEnabled) return;
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'wrong' || type === 'respawn') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(220, now);
+          osc.frequency.linearRampToValueAtTime(130, now + 0.32);
+          gain.gain.setValueAtTime(0.16, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+          osc.start(now);
+          osc.stop(now + 0.36);
+        } else if (type === 'gateOpen') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(440, now);
+          osc.frequency.exponentialRampToValueAtTime(880, now + 0.28);
+          gain.gain.setValueAtTime(0.2, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+          osc.start(now);
+          osc.stop(now + 0.33);
+        } else if (type === 'victory') {
+          const notes = [523.25, 659.25, 783.99, 1046.5];
+          notes.forEach((freq, i) => {
+            const o = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            o.type = 'triangle';
+            o.frequency.setValueAtTime(freq, now + i * 0.11);
+            g.gain.setValueAtTime(0.18, now + i * 0.11);
+            g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.11 + 0.28);
+            o.connect(g);
+            g.connect(audioCtx.destination);
+            o.start(now + i * 0.11);
+            o.stop(now + i * 0.11 + 0.3);
+          });
+        } else if (type === 'step') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(110, now);
+          gain.gain.setValueAtTime(0.04, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+          osc.start(now);
+          osc.stop(now + 0.06);
+        }
+      } catch (e) {}
+    }
+
+    function speakWord(wordText) {
+      if (!appState.soundEnabled || !('speechSynthesis' in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(String(wordText));
+        utter.lang = 'en-US';
+        utter.rate = 0.9;
+        window.speechSynthesis.speak(utter);
+      } catch (e) {}
+    }
+
+    function toggleSound() {
+      appState.soundEnabled = !appState.soundEnabled;
+      updateSoundButtonUI();
+      saveProgressToStorage();
+      showToast(appState.soundEnabled ? '효과음 및 원어민 발음이 켜졌습니다.' : '사운드가 음소거되었습니다.', appState.soundEnabled ? '🔊' : '🔇');
+    }
+
+    function updateSoundButtonUI() {
+      const icon = appState.soundEnabled ? '🔊' : '🔇';
+      const btn1 = document.getElementById('btn-sound-toggle');
+      if (btn1) btn1.textContent = icon;
+    }
+
+    let toastTimeout = null;
+    function showToast(message, icon = '✨') {
+      const banner = document.getElementById('toast-banner');
+      const iconEl = document.getElementById('toast-icon');
+      const textEl = document.getElementById('toast-text');
+      if (!banner || !iconEl || !textEl) return;
+
+      iconEl.textContent = icon;
+      textEl.textContent = message;
+      banner.classList.remove('hidden');
+
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        banner.classList.add('hidden');
+      }, 3000);
+    }
+
+    /**
+     * ============================================================================
+     * Three.js 기반 1인칭 3D 영단어 미로 탈출 엔진
+     * ============================================================================
+     */
+    let scene, camera, renderer, animationFrameId;
+    let mazeGrid = [];        // 0: 통로, 1: 벽, 2: 잠긴 영단어 문, 3: 탈출구(EXIT)
+    let mazeSize = 9;
+    const CELL_SIZE = 4;
+    let gatesMap = {};        // "r,c" -> { row, col, wordObj, direction, opened, doorGroup, doorMesh }
+    let exitPos = { row: 0, col: 0 };
+    let exitPortalMesh = null;
+
+    const player = {
+      x: CELL_SIZE,
+      z: CELL_SIZE,
+      yaw: 0,
+      radius: 0.75,
+      moveSpeed: 0.13,
+      rotSpeed: 0.045
+    };
+
+    const inputKeys = {
+      forward: false,
+      backward: false,
+      left: false,
+      right: false
+    };
+
+    // 미로 맵 자동 생성 알고리즘 + 전 구간 균일 영단어 잠금 문 배치
+    function generateMazeLayout(wordList) {
+      const cfg = STAGE_CONFIGS[appState.stageLevel - 1];
+      mazeSize = cfg ? cfg.mazeSize : 9;
+      mazeGrid = Array.from({ length: mazeSize }, () => Array(mazeSize).fill(1));
+
+      const turnChance = Math.min(0.92, 0.45 + appState.stageLevel * 0.05);
+
+      function carve(r, c, lastDir = null) {
+        mazeGrid[r][c] = 0;
+        let dirs = [
+          [-2, 0], [2, 0], [0, -2], [0, 2]
+        ].sort(() => Math.random() - 0.5);
+
+        if (lastDir && Math.random() < turnChance) {
+          dirs.sort((a, b) => {
+            const sameA = (a[0] === lastDir[0] && a[1] === lastDir[1]) ? 1 : 0;
+            const sameB = (b[0] === lastDir[0] && b[1] === lastDir[1]) ? 1 : 0;
+            return sameA - sameB;
+          });
+        }
+
+        for (const dir of dirs) {
+          const [dr, dc] = dir;
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr > 0 && nr < mazeSize - 1 && nc > 0 && nc < mazeSize - 1 && mazeGrid[nr][nc] === 1) {
+            mazeGrid[r + dr / 2][c + dc / 2] = 0;
+            carve(nr, nc, dir);
+          }
+        }
+      }
+
+      carve(1, 1);
+
+      // 4단계 이상에서는 내부 벽 일부를 추가 개방하여 헷갈리는 순환 루프(Loop) 형성
+      if (appState.stageLevel >= 4) {
+        const extraLoops = Math.floor(appState.stageLevel * 0.8);
+        let openedLoops = 0;
+        for (let attempt = 0; attempt < 80 && openedLoops < extraLoops; attempt++) {
+          const rr = 2 + Math.floor(Math.random() * (mazeSize - 4));
+          const cc = 2 + Math.floor(Math.random() * (mazeSize - 4));
+          if (mazeGrid[rr][cc] === 1) {
+            const openVertical = mazeGrid[rr - 1][cc] === 0 && mazeGrid[rr + 1][cc] === 0 && mazeGrid[rr][cc - 1] === 1 && mazeGrid[rr][cc + 1] === 1;
+            const openHorizontal = mazeGrid[rr][cc - 1] === 0 && mazeGrid[rr][cc + 1] === 0 && mazeGrid[rr - 1][cc] === 1 && mazeGrid[rr + 1][cc] === 1;
+            if (openVertical || openHorizontal) {
+              mazeGrid[rr][cc] = 0;
+              openedLoops++;
+            }
+          }
+        }
+      }
+
+      // 시작점 (1, 1)에서 BFS로 모든 통로 칸의 거리 계산
+      const dist = Array.from({ length: mazeSize }, () => Array(mazeSize).fill(-1));
+      const parent = Array.from({ length: mazeSize }, () => Array(mazeSize).fill(null));
+      const queue = [[1, 1]];
+      dist[1][1] = 0;
+
+      let farthestCell = [1, 1];
+      let maxDist = 0;
+
+      while (queue.length > 0) {
+        const [r, c] = queue.shift();
+        if (dist[r][c] > maxDist) {
+          maxDist = dist[r][c];
+          farthestCell = [r, c];
+        }
+        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < mazeSize && nc >= 0 && nc < mazeSize && mazeGrid[nr][nc] === 0 && dist[nr][nc] === -1) {
+            dist[nr][nc] = dist[r][c] + 1;
+            parent[nr][nc] = [r, c];
+            queue.push([nr, nc]);
+          }
+        }
+      }
+
+      exitPos = { row: farthestCell[0], col: farthestCell[1] };
+      mazeGrid[exitPos.row][exitPos.col] = 3;
+
+      const mainPath = [];
+      let curr = [exitPos.row, exitPos.col];
+      while (curr) {
+        mainPath.unshift(curr);
+        curr = parent[curr[0]][curr[1]];
+      }
+
+      // 전 구간 균등 분산 문 배치 (초반 몰림 방지 + Max-Min 공간 분산)
+      gatesMap = {};
+      const gateCount = Math.min(wordList.length, Math.max(1, Math.floor((mazeSize * mazeSize) / 5)));
+      const selectedCells = [];
+
+      const isSafeStartZone = (r, c) => (Math.abs(r - 1) + Math.abs(c - 1)) <= 3;
+      const isExitCell = (r, c) => (r === exitPos.row && c === exitPos.col);
+
+      const validMainPath = mainPath.filter(([r, c]) => !isSafeStartZone(r, c) && !isExitCell(r, c));
+      const mainQuota = Math.min(validMainPath.length, Math.ceil(gateCount * 0.6));
+      if (mainQuota > 0 && validMainPath.length > 0) {
+        for (let k = 0; k < mainQuota; k++) {
+          const ratio = (k + 0.5) / mainQuota;
+          const idx = Math.min(validMainPath.length - 1, Math.floor(ratio * validMainPath.length));
+          const [mr, mc] = validMainPath[idx];
+          if (!selectedCells.some(([sr, sc]) => Math.abs(sr - mr) + Math.abs(sc - mc) < 2)) {
+            selectedCells.push([mr, mc]);
+          }
+        }
+      }
+
+      const allValidCorridors = [];
+      for (let r = 1; r < mazeSize - 1; r++) {
+        for (let c = 1; c < mazeSize - 1; c++) {
+          if (mazeGrid[r][c] === 0 && !isSafeStartZone(r, c) && !isExitCell(r, c)) {
+            allValidCorridors.push([r, c]);
+          }
+        }
+      }
+
+      while (selectedCells.length < gateCount && allValidCorridors.length > 0) {
+        let bestCell = null;
+        let bestMinDist = -1;
+
+        for (const [r, c] of allValidCorridors) {
+          if (selectedCells.some(([sr, sc]) => sr === r && sc === c)) continue;
+
+          let minDist = Math.min(
+            Math.hypot(r - 1, c - 1),
+            Math.hypot(r - exitPos.row, c - exitPos.col)
+          );
+          for (const [sr, sc] of selectedCells) {
+            const d = Math.hypot(r - sr, c - sc);
+            if (d < minDist) minDist = d;
+          }
+
+          if (minDist > bestMinDist) {
+            bestMinDist = minDist;
+            bestCell = [r, c];
+          }
+        }
+
+        if (bestCell) {
+          selectedCells.push(bestCell);
+        } else {
+          break;
+        }
+      }
+
+      selectedCells.sort((a, b) => dist[a[0]][a[1]] - dist[b[0]][b[1]]);
+
+      for (let i = 0; i < selectedCells.length; i++) {
+        const [gr, gc] = selectedCells[i];
+        const wordObj = wordList[i];
+        // 영어 단어 -> 한국어 뜻 찾기 / 한국어 뜻 -> 영어 단어 찾기 교차 출제
+        const direction = (i % 2 === 0) ? 'enToKo' : 'koToEn';
+        mazeGrid[gr][gc] = 2;
+        gatesMap[`${gr},${gc}`] = {
+          row: gr,
+          col: gc,
+          wordObj: wordObj,
+          direction: direction,
+          opened: false,
+          doorGroup: null,
+          doorMesh: null
+        };
+      }
+    }
+
+    // 영단어 또는 우리말 뜻을 3D 문 텍스처로 변환
+    function createWordGateTexture(promptText, isOpened = false, unlockedSummary = '') {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      const grad = ctx.createLinearGradient(0, 0, 0, 512);
+      if (isOpened) {
+        grad.addColorStop(0, '#10b981');
+        grad.addColorStop(1, '#047857');
+      } else {
+        grad.addColorStop(0, '#4f46e5');
+        grad.addColorStop(1, '#1e1b4b');
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 512, 512);
+
+      // 테두리 장식
+      ctx.strokeStyle = isOpened ? '#a7f3d0' : '#fbbf24';
+      ctx.lineWidth = 22;
+      ctx.strokeRect(20, 20, 472, 472);
+
+      // 중앙 명판 패널
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.roundRect(48, 125, 416, 210, 32);
+      ctx.fill();
+
+      // 텍스트 길이에 맞춘 동적 폰트 크기 조정
+      const len = promptText.length;
+      const fontSize = len <= 5 ? 86 : len <= 8 ? 64 : 48;
+      ctx.fillStyle = isOpened ? '#059669' : '#1e1b4b';
+      ctx.font = `800 ${fontSize}px Inter, Jua, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(promptText, 256, 232);
+
+      // 하단 상태 라벨
+      ctx.fillStyle = isOpened ? '#ecfdf5' : '#fef3c7';
+      ctx.font = '800 32px Jua, sans-serif';
+      ctx.fillText(isOpened ? (unlockedSummary || 'UNLOCKED!') : 'WORD LOCKED GATE', 256, 420);
+
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    // 탈출구 포탈 텍스처
+    function createExitTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      const grad = ctx.createRadialGradient(256, 256, 30, 256, 256, 250);
+      grad.addColorStop(0, '#fef08a');
+      grad.addColorStop(0.5, '#10b981');
+      grad.addColorStop(1, '#064e3b');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 512, 512);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 110px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('EXIT', 256, 220);
+
+      ctx.font = '700 44px Jua, sans-serif';
+      ctx.fillText('탈출구', 256, 310);
+
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    // 벽돌 텍스처 프로시저럴 생성
+    function createWallTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(0, 0, 256, 256);
+
+      ctx.fillStyle = '#cbd5e1';
+      const rows = 4;
+      const rowH = 256 / rows;
+      for (let r = 0; r < rows; r++) {
+        const offset = (r % 2) * 64;
+        for (let c = -1; c < 3; c++) {
+          ctx.fillRect(c * 128 + offset + 4, r * rowH + 4, 120, rowH - 8);
+        }
+      }
+      ctx.fillStyle = '#6366f1';
+      ctx.fillRect(0, 0, 256, 12);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(0, 244, 256, 12);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    }
+
+    function initMazeGame() {
+      const container = document.getElementById('maze-3d-container');
+      if (!container) return;
+
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      if (appState.mazeTimerInterval) clearInterval(appState.mazeTimerInterval);
+      container.innerHTML = '';
+
+      const cfg = STAGE_CONFIGS[appState.stageLevel - 1];
+      document.getElementById('hud-stage-title').textContent = `STAGE ${cfg.stage} / 10 (${cfg.mazeSize}×${cfg.mazeSize}) · 실생활 영단어 미로`;
+
+      if (!appState.mazeWords || appState.mazeWords.length !== cfg.questionCount) {
+        appState.mazeWords = drawUniqueWordsFrom500(cfg.questionCount);
+      }
+      generateMazeLayout(appState.mazeWords);
+
+      const totalGates = Object.keys(gatesMap).length;
+      document.getElementById('hud-gates-opened').textContent = '0';
+      document.getElementById('hud-gates-total').textContent = totalGates;
+      document.getElementById('hud-timer').textContent = '00:00';
+      document.getElementById('maze-victory-modal').classList.add('hidden');
+      document.getElementById('gate-puzzle-modal').classList.add('hidden');
+
+      appState.mazeCleared = false;
+      appState.mazeElapsedSec = 0;
+      appState.respawnCount = 0;
+      appState.mazeTimerInterval = setInterval(() => {
+        if (!appState.mazeCleared) {
+          appState.mazeElapsedSec++;
+          const m = String(Math.floor(appState.mazeElapsedSec / 60)).padStart(2, '0');
+          const s = String(appState.mazeElapsedSec % 60).padStart(2, '0');
+          document.getElementById('hud-timer').textContent = `${m}:${s}`;
+        }
+      }, 1000);
+
+      // Three.js 씬 & 카메라 & 렌더러 설정
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xbae6fd);
+      scene.fog = new THREE.Fog(0xbae6fd, 8, 38);
+
+      const width = container.clientWidth || 800;
+      const height = container.clientHeight || 580;
+      camera = new THREE.PerspectiveCamera(68, width / height, 0.1, 100);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      container.appendChild(renderer.domElement);
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.78);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.65);
+      dirLight.position.set(20, 40, 20);
+      scene.add(dirLight);
+
+      // 바닥
+      const floorSize = mazeSize * CELL_SIZE;
+      const floorGeo = new THREE.PlaneGeometry(floorSize, floorSize);
+      const floorMat = new THREE.MeshLambertMaterial({ color: 0xf8fafc });
+      const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+      floorMesh.rotation.x = -Math.PI / 2;
+      floorMesh.position.set((mazeSize - 1) * CELL_SIZE / 2, 0, (mazeSize - 1) * CELL_SIZE / 2);
+      scene.add(floorMesh);
+
+      const gridHelper = new THREE.GridHelper(floorSize, mazeSize, 0xcbd5e1, 0xe2e8f0);
+      gridHelper.position.set((mazeSize - 1) * CELL_SIZE / 2, 0.01, (mazeSize - 1) * CELL_SIZE / 2);
+      scene.add(gridHelper);
+
+      // 출발 지점 마커
+      const startMarkerGeo = new THREE.RingGeometry(0.6, 1.2, 24);
+      const startMarkerMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, side: THREE.DoubleSide });
+      const startMarker = new THREE.Mesh(startMarkerGeo, startMarkerMat);
+      startMarker.rotation.x = -Math.PI / 2;
+      startMarker.position.set(1 * CELL_SIZE, 0.03, 1 * CELL_SIZE);
+      scene.add(startMarker);
+
+      // 벽, 영단어 잠금 문, 탈출구 배치
+      const wallTex = createWallTexture();
+      const wallGeo = new THREE.BoxGeometry(CELL_SIZE, 3.6, CELL_SIZE);
+      const wallMat = new THREE.MeshLambertMaterial({ map: wallTex });
+
+      for (let r = 0; r < mazeSize; r++) {
+        for (let c = 0; c < mazeSize; c++) {
+          const wx = c * CELL_SIZE;
+          const wz = r * CELL_SIZE;
+
+          if (mazeGrid[r][c] === 1) {
+            const wall = new THREE.Mesh(wallGeo, wallMat);
+            wall.position.set(wx, 1.8, wz);
+            scene.add(wall);
+          } else if (mazeGrid[r][c] === 2) {
+            const gateData = gatesMap[`${r},${c}`];
+            const doorGroup = new THREE.Group();
+            doorGroup.position.set(wx, 0, wz);
+
+            const promptText = gateData.direction === 'enToKo'
+              ? gateData.wordObj.en
+              : gateData.wordObj.ko;
+            const gateTex = createWordGateTexture(promptText, false);
+            const doorGeo = new THREE.BoxGeometry(CELL_SIZE * 0.94, 3.4, CELL_SIZE * 0.94);
+            const doorMat = new THREE.MeshLambertMaterial({ map: gateTex });
+            const doorMesh = new THREE.Mesh(doorGeo, doorMat);
+            doorMesh.position.y = 1.7;
+
+            doorGroup.add(doorMesh);
+            scene.add(doorGroup);
+
+            gateData.doorGroup = doorGroup;
+            gateData.doorMesh = doorMesh;
+          } else if (mazeGrid[r][c] === 3) {
+            const exitTex = createExitTexture();
+            const exitGeo = new THREE.BoxGeometry(CELL_SIZE * 0.85, 3.5, CELL_SIZE * 0.85);
+            const exitMat = new THREE.MeshBasicMaterial({ map: exitTex });
+            exitPortalMesh = new THREE.Mesh(exitGeo, exitMat);
+            exitPortalMesh.position.set(wx, 1.75, wz);
+            scene.add(exitPortalMesh);
+          }
+        }
+      }
+
+      resetPlayerToStart();
+      appState.mazeInitialized = true;
+
+      setupMouseLookOnMaze(renderer.domElement);
+      animateMazeLoop();
+    }
+
+    function resetPlayerToStart() {
+      player.x = 1 * CELL_SIZE;
+      player.z = 1 * CELL_SIZE;
+      if (mazeGrid[1][2] === 0 || mazeGrid[1][2] === 2) {
+        player.yaw = -Math.PI / 2;
+      } else {
+        player.yaw = Math.PI;
+      }
+      if (camera) {
+        camera.position.set(player.x, 1.65, player.z);
+        camera.rotation.order = 'YXZ';
+        camera.rotation.y = player.yaw;
+      }
+    }
+
+    function setupMouseLookOnMaze(domElement) {
+      let isDragging = false;
+      let prevX = 0;
+
+      domElement.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        prevX = e.clientX;
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - prevX;
+        prevX = e.clientX;
+        player.yaw -= dx * 0.0055;
+      });
+      window.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+    }
+
+    function canMoveTo(nx, nz) {
+      const margin = player.radius;
+      const checkPoints = [
+        [nx - margin, nz - margin],
+        [nx + margin, nz - margin],
+        [nx - margin, nz + margin],
+        [nx + margin, nz + margin]
+      ];
+
+      for (const [px, pz] of checkPoints) {
+        const col = Math.round(px / CELL_SIZE);
+        const row = Math.round(pz / CELL_SIZE);
+
+        if (row < 0 || row >= mazeSize || col < 0 || col >= mazeSize) return false;
+        const cell = mazeGrid[row][col];
+        if (cell === 1) return false;
+        if (cell === 2) {
+          const g = gatesMap[`${row},${col}`];
+          if (g && !g.opened) return false;
+        }
+      }
+      return true;
+    }
+
+    function findNearbyLockedGate() {
+      const dirX = -Math.sin(player.yaw);
+      const dirZ = -Math.cos(player.yaw);
+
+      let bestGate = null;
+      let bestScore = -999;
+
+      for (const key in gatesMap) {
+        const gate = gatesMap[key];
+        if (gate.opened) continue;
+
+        const gx = gate.col * CELL_SIZE;
+        const gz = gate.row * CELL_SIZE;
+        const dx = gx - player.x;
+        const dz = gz - player.z;
+        const dist = Math.hypot(dx, dz);
+
+        if (dist < CELL_SIZE * 1.45) {
+          const dot = (dx / dist) * dirX + (dz / dist) * dirZ;
+          if (dot > -0.2 && dot > bestScore) {
+            bestScore = dot;
+            bestGate = gate;
+          }
+        }
+      }
+      return bestGate;
+    }
+
+    let stepSoundCooldown = 0;
+
+    function updatePlayerMovement() {
+      const modalOpen = !document.getElementById('gate-puzzle-modal').classList.contains('hidden');
+      if (modalOpen || appState.mazeCleared) return;
+
+      if (inputKeys.left) player.yaw += player.rotSpeed;
+      if (inputKeys.right) player.yaw -= player.rotSpeed;
+
+      let moveStep = 0;
+      if (inputKeys.forward) moveStep += player.moveSpeed;
+      if (inputKeys.backward) moveStep -= player.moveSpeed * 0.75;
+
+      if (moveStep !== 0) {
+        const vx = -Math.sin(player.yaw) * moveStep;
+        const vz = -Math.cos(player.yaw) * moveStep;
+
+        if (canMoveTo(player.x + vx, player.z)) player.x += vx;
+        if (canMoveTo(player.x, player.z + vz)) player.z += vz;
+
+        stepSoundCooldown--;
+        if (stepSoundCooldown <= 0) {
+          playSoundEffect('step');
+          stepSoundCooldown = 18;
+        }
+      }
+
+      const bobOffset = moveStep !== 0 ? Math.sin(Date.now() * 0.012) * 0.04 : 0;
+      camera.position.set(player.x, 1.65 + bobOffset, player.z);
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = player.yaw;
+
+      const nearbyGate = findNearbyLockedGate();
+      const banner = document.getElementById('gate-interact-banner');
+      if (nearbyGate) {
+        appState.activeGate = nearbyGate;
+        banner.classList.remove('hidden');
+      } else {
+        appState.activeGate = null;
+        banner.classList.add('hidden');
+      }
+
+      // 탈출구 도달 판정
+      const exitX = exitPos.col * CELL_SIZE;
+      const exitZ = exitPos.row * CELL_SIZE;
+      if (Math.hypot(player.x - exitX, player.z - exitZ) < CELL_SIZE * 0.65) {
+        handleMazeVictory();
+      }
+    }
+
+    function animateMazeLoop() {
+      animationFrameId = requestAnimationFrame(animateMazeLoop);
+
+      updatePlayerMovement();
+
+      for (const key in gatesMap) {
+        const g = gatesMap[key];
+        if (g.opened && g.doorGroup && g.doorGroup.position.y > -3.15) {
+          g.doorGroup.position.y -= 0.12;
+        }
+      }
+
+      if (exitPortalMesh) {
+        exitPortalMesh.rotation.y += 0.015;
+      }
+
+      renderMinimap();
+      renderer.render(scene, camera);
+    }
+
+    function onMazeWindowResize() {
+      const container = document.getElementById('maze-3d-container');
+      if (!container || !renderer || !camera) return;
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      if (w > 0 && h > 0) {
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      }
+    }
+
+    function renderMinimap() {
+      if (!appState.showMinimap) return;
+      const canvas = document.getElementById('minimap-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const size = canvas.width;
+      const cellPx = size / mazeSize;
+
+      ctx.clearRect(0, 0, size, size);
+
+      for (let r = 0; r < mazeSize; r++) {
+        for (let c = 0; c < mazeSize; c++) {
+          const val = mazeGrid[r][c];
+          if (val === 1) {
+            ctx.fillStyle = '#334155';
+          } else if (val === 2) {
+            const g = gatesMap[`${r},${c}`];
+            ctx.fillStyle = g && g.opened ? '#10b981' : '#f59e0b';
+          } else if (val === 3) {
+            ctx.fillStyle = '#22c55e';
+          } else {
+            ctx.fillStyle = '#f1f5f9';
+          }
+          ctx.fillRect(c * cellPx, r * cellPx, cellPx, cellPx);
+        }
+      }
+
+      const px = (player.x / CELL_SIZE + 0.5) * cellPx;
+      const pz = (player.z / CELL_SIZE + 0.5) * cellPx;
+
+      ctx.save();
+      ctx.translate(px, pz);
+      ctx.rotate(-player.yaw);
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.moveTo(0, -cellPx * 0.45);
+      ctx.lineTo(-cellPx * 0.3, cellPx * 0.3);
+      ctx.lineTo(cellPx * 0.3, cellPx * 0.3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function toggleMinimap() {
+      appState.showMinimap = !appState.showMinimap;
+      const wrap = document.getElementById('minimap-wrapper');
+      const btn = document.getElementById('btn-minimap-toggle');
+      if (appState.showMinimap) {
+        wrap.classList.remove('hidden');
+        if (btn) btn.textContent = '🗺️ 미니맵 숨기기';
+        renderMinimap();
+      } else {
+        wrap.classList.add('hidden');
+        if (btn) btn.textContent = '🗺️ 미니맵 보기';
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 잠긴 영단어 문 해독 퍼즐 모달 로직 (6지선다 선택 + 스펠링 직접 입력)
+     * ============================================================================
+     */
+    function checkAndOpenNearbyGate() {
+      const gate = findNearbyLockedGate();
+      if (gate) {
+        appState.activeGate = gate;
+        openGatePuzzleModal();
+      } else {
+        showToast('바로 앞에 잠긴 영단어 문이 없습니다. 문 가까이 다가가세요!', '🚶');
+      }
+    }
+
+    function openGatePuzzleModal() {
+      const gate = appState.activeGate;
+      if (!gate || gate.opened) return;
+
+      inputKeys.forward = inputKeys.backward = inputKeys.left = inputKeys.right = false;
+
+      const { en, ko } = gate.wordObj;
+      const isEnToKo = gate.direction === 'enToKo';
+      const promptText = isEnToKo ? en : ko;
+      const answerText = isEnToKo ? ko : en;
+
+      document.getElementById('modal-gate-prompt').textContent = promptText;
+      document.getElementById('modal-gate-prompt-badge').textContent = isEnToKo
+        ? '잠긴 문의 실생활 영단어'
+        : '잠긴 문의 우리말 단어';
+      document.getElementById('modal-gate-question-text').innerHTML = isEnToKo
+        ? `이 영단어의 알맞은 <span class="text-emerald-600 underline">우리말 뜻</span>은 무엇일까요?`
+        : `이 뜻에 해당하는 <span class="text-indigo-600 underline">영어 단어</span>는 무엇일까요?`;
+
+      // 직접 타이핑 패널 힌트 세팅 (첫 글자와 마지막 글자 + 글자 수 안내)
+      document.getElementById('gate-type-meaning').textContent = ko;
+      const maskedHint = en.length <= 2
+        ? `${en[0]} _`
+        : `${en[0]} ${'_ '.repeat(en.length - 2)}${en[en.length - 1]}`;
+      document.getElementById('gate-type-hint').textContent = `${maskedHint} (${en.length}글자)`;
+      document.getElementById('gate-type-input').value = '';
+
+      document.getElementById('gate-modal-feedback').textContent = '정답을 맞히면 문이 열립니다! (오답 시 출발 지점으로 리스폰)';
+      document.getElementById('gate-modal-feedback').className = 'mt-3 text-center text-xs font-bold text-slate-500 min-h-[20px]';
+
+      // 500개 단어 풀에서 중복 없는 오답 5개 추출하여 6지선다 구성
+      const distractorPool = shuffleArray(WORD_BANK_500.filter(w => w.en !== en));
+      const distractors = [];
+      const usedLabels = new Set([answerText]);
+      for (const item of distractorPool) {
+        const label = isEnToKo ? item.ko : item.en;
+        if (!usedLabels.has(label)) {
+          usedLabels.add(label);
+          distractors.push(label);
+        }
+        if (distractors.length === 5) break;
+      }
+
+      const options = shuffleArray([answerText, ...distractors]);
+      const grid = document.getElementById('gate-options-grid');
+      grid.innerHTML = '';
+      options.forEach(opt => {
+        const btn = document.createElement('button');
+        btn.className = 'btn-3d bg-slate-50 hover:bg-indigo-50 border-2 border-slate-200 hover:border-indigo-400 rounded-2xl py-3.5 px-2 text-sm sm:text-base font-extrabold text-slate-800 transition break-keep';
+        btn.textContent = opt;
+        btn.onclick = () => verifyGateOptionAnswer(opt, btn);
+        grid.appendChild(btn);
+      });
+
+      setGatePuzzleMode('select');
+      document.getElementById('gate-puzzle-modal').classList.remove('hidden');
+      if (isEnToKo) speakWord(en);
+    }
+
+    function closeGatePuzzleModal() {
+      document.getElementById('gate-puzzle-modal').classList.add('hidden');
+    }
+
+    function speakGateWord() {
+      if (appState.activeGate) {
+        speakWord(appState.activeGate.wordObj.en);
+      }
+    }
+
+    function setGatePuzzleMode(mode) {
+      appState.gatePuzzleMode = mode;
+      const btnSelect = document.getElementById('puzzle-mode-select');
+      const btnType = document.getElementById('puzzle-mode-type');
+      const panelSelect = document.getElementById('gate-mode-select-panel');
+      const panelType = document.getElementById('gate-mode-type-panel');
+
+      if (mode === 'select') {
+        btnSelect.className = 'flex-1 py-2 rounded-lg text-xs font-extrabold bg-white text-indigo-700 shadow-sm transition';
+        btnType.className = 'flex-1 py-2 rounded-lg text-xs font-extrabold text-slate-600 hover:text-slate-900 transition';
+        panelSelect.classList.remove('hidden');
+        panelType.classList.add('hidden');
+      } else {
+        btnType.className = 'flex-1 py-2 rounded-lg text-xs font-extrabold bg-white text-emerald-700 shadow-sm transition';
+        btnSelect.className = 'flex-1 py-2 rounded-lg text-xs font-extrabold text-slate-600 hover:text-slate-900 transition';
+        panelType.classList.remove('hidden');
+        panelSelect.classList.add('hidden');
+        setTimeout(() => {
+          const inp = document.getElementById('gate-type-input');
+          if (inp) inp.focus();
+        }, 40);
+      }
+    }
+
+    function verifyGateOptionAnswer(selectedText, btn) {
+      const gate = appState.activeGate;
+      if (!gate) return;
+      const isEnToKo = gate.direction === 'enToKo';
+      const correctText = isEnToKo ? gate.wordObj.ko : gate.wordObj.en;
+
+      if (selectedText === correctText) {
+        btn.classList.add('bg-emerald-500', 'text-white', 'border-emerald-600');
+        unlockCurrentGate();
+      } else {
+        triggerWrongAnswerRespawn(gate, selectedText);
+      }
+    }
+
+    function verifyGateTypedWord() {
+      const gate = appState.activeGate;
+      if (!gate) return;
+      const inp = document.getElementById('gate-type-input');
+      const typed = (inp ? inp.value : '').trim().toLowerCase();
+
+      if (!typed) {
+        showToast('영어 단어 스펠링을 입력해주세요!', '⌨️');
+        return;
+      }
+
+      if (typed === gate.wordObj.en.toLowerCase()) {
+        unlockCurrentGate();
+      } else {
+        triggerWrongAnswerRespawn(gate, typed);
+      }
+    }
+
+    // 오답 시 페널티: 경고 및 미로 처음 출발 지점으로 즉시 리스폰
+    function triggerWrongAnswerRespawn(gate, wrongInput = '') {
+      playSoundEffect('respawn');
+      appState.respawnCount++;
+
+      inputKeys.forward = inputKeys.backward = inputKeys.left = inputKeys.right = false;
+      closeGatePuzzleModal();
+      document.getElementById('gate-interact-banner').classList.add('hidden');
+
+      resetPlayerToStart();
+
+      const mazeContainer = document.getElementById('stage-maze');
+      mazeContainer.classList.add('animate-shake', 'ring-4', 'ring-rose-500');
+      setTimeout(() => {
+        mazeContainer.classList.remove('animate-shake', 'ring-4', 'ring-rose-500');
+      }, 600);
+
+      const detail = wrongInput ? `('${wrongInput}' 오답!) ` : '';
+      showToast(`❌ 틀렸습니다! ${detail}출발 지점(START)으로 되돌아갑니다.`, '🔄');
+    }
+
+    function unlockCurrentGate() {
+      const gate = appState.activeGate;
+      if (!gate) return;
+
+      gate.opened = true;
+      playSoundEffect('gateOpen');
+      speakWord(gate.wordObj.en);
+
+      if (gate.doorMesh) {
+        gate.doorMesh.material.map = createWordGateTexture(
+          gate.wordObj.en,
+          true,
+          `${gate.wordObj.en} = ${gate.wordObj.ko}`
+        );
+        gate.doorMesh.material.needsUpdate = true;
+      }
+
+      const openedCount = Object.values(gatesMap).filter(g => g.opened).length;
+      document.getElementById('hud-gates-opened').textContent = openedCount;
+
+      const feedback = document.getElementById('gate-modal-feedback');
+      feedback.textContent = `🔓 잠금 해제 성공! (${gate.wordObj.en} : ${gate.wordObj.ko}) 문이 열립니다!`;
+      feedback.className = 'mt-3 text-center text-xs font-extrabold text-emerald-600 min-h-[20px]';
+
+      setTimeout(() => {
+        closeGatePuzzleModal();
+        document.getElementById('gate-interact-banner').classList.add('hidden');
+        showToast(`'${gate.wordObj.en} (${gate.wordObj.ko})' 문이 열렸습니다! 계속 전진하세요!`, '🔓');
+      }, 650);
+    }
+
+    function handleMazeVictory() {
+      if (appState.mazeCleared) return;
+      appState.mazeCleared = true;
+      clearInterval(appState.mazeTimerInterval);
+      playSoundEffect('victory');
+
+      appState.clearedStages.add(appState.stageLevel);
+      saveProgressToStorage();
+      renderStageDropdowns();
+
+      const openedCount = Object.values(gatesMap).filter(g => g.opened).length;
+      const totalGates = Object.keys(gatesMap).length;
+
+      document.getElementById('victory-time').textContent = document.getElementById('hud-timer').textContent;
+      document.getElementById('victory-gates').textContent = `${openedCount} / ${totalGates}개`;
+
+      const listEl = document.getElementById('victory-words-list');
+      listEl.innerHTML = '';
+      Object.values(gatesMap).forEach(g => {
+        const badge = document.createElement('span');
+        badge.className = 'px-2.5 py-1 rounded-xl bg-indigo-100 text-indigo-800 font-extrabold text-xs';
+        badge.textContent = `${g.wordObj.en} (${g.wordObj.ko})`;
+        listEl.appendChild(badge);
+      });
+
+      const nextBtn = document.getElementById('btn-next-stage');
+      if (appState.stageLevel < 10) {
+        nextBtn.textContent = `🚀 다음 단계 (${appState.stageLevel + 1}단계) 도전!`;
+      } else {
+        nextBtn.textContent = `👑 전 10단계 완전 정복! (1단계부터 다시하기)`;
+      }
+
+      document.getElementById('maze-victory-modal').classList.remove('hidden');
+    }
+
+    function proceedToNextStage() {
+      document.getElementById('maze-victory-modal').classList.add('hidden');
+      const nextStage = appState.stageLevel < 10 ? appState.stageLevel + 1 : 1;
+      selectStageLevel(nextStage);
+    }
+
+    function closeVictoryModalAndReplayMaze() {
+      document.getElementById('maze-victory-modal').classList.add('hidden');
+      reshuffleWordsAndRestart();
+    }
+
+    /**
+     * ============================================================================
+     * 키보드 & 터치 온스크린 컨트롤 바인딩 및 초기화
+     * ============================================================================
+     */
+    function bindControls() {
+      window.addEventListener('keydown', (e) => {
+        const modalHidden = document.getElementById('gate-puzzle-modal').classList.contains('hidden');
+        if (!modalHidden) return; // 모달 입력 중에는 이동 키 차단
+
+        const code = e.code;
+        if (code === 'KeyW' || code === 'ArrowUp') inputKeys.forward = true;
+        if (code === 'KeyS' || code === 'ArrowDown') inputKeys.backward = true;
+        if (code === 'KeyA' || code === 'ArrowLeft') inputKeys.left = true;
+        if (code === 'KeyD' || code === 'ArrowRight') inputKeys.right = true;
+        if (code === 'Space') {
+          e.preventDefault();
+          checkAndOpenNearbyGate();
+        }
+      });
+
+      window.addEventListener('keyup', (e) => {
+        const code = e.code;
+        if (code === 'KeyW' || code === 'ArrowUp') inputKeys.forward = false;
+        if (code === 'KeyS' || code === 'ArrowDown') inputKeys.backward = false;
+        if (code === 'KeyA' || code === 'ArrowLeft') inputKeys.left = false;
+        if (code === 'KeyD' || code === 'ArrowRight') inputKeys.right = false;
+      });
+
+      const bindHoldButton = (btnId, keyName) => {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        const press = (e) => {
+          e.preventDefault();
+          inputKeys[keyName] = true;
+        };
+        const release = (e) => {
+          e.preventDefault();
+          inputKeys[keyName] = false;
+        };
+        btn.addEventListener('mousedown', press);
+        btn.addEventListener('mouseup', release);
+        btn.addEventListener('mouseleave', release);
+        btn.addEventListener('touchstart', press, { passive: false });
+        btn.addEventListener('touchend', release);
+      };
+
+      bindHoldButton('ctrl-forward', 'forward');
+      bindHoldButton('ctrl-backward', 'backward');
+      bindHoldButton('ctrl-left', 'left');
+      bindHoldButton('ctrl-right', 'right');
+
+      window.addEventListener('resize', () => {
+        onMazeWindowResize();
+      });
+    }
+
+    // 페이지 접속 즉시 500개 실생활 영단어 풀에서 중복 없이 무작위 추출하여 3D 미로 시작
+    window.onload = function () {
+      loadProgressFromStorage();
+      renderStageDropdowns();
+      bindControls();
+      const cfg = STAGE_CONFIGS[appState.stageLevel - 1];
+      appState.mazeWords = drawUniqueWordsFrom500(cfg.questionCount);
+      initMazeGame();
+    };
+  </script>
+</body>
+</html>
